@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>相片文字拼貼生成器 | Photo Collage Text Generator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#0b0f19',
+                        cardbg: '#111827',
+                        bordercolor: '#1f2937'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        :root {
+            --bg-theme: #0b0f19;
+            --bg-pattern: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+        }
+
+        body {
+            background-color: var(--bg-theme);
+            background-image: var(--bg-pattern);
+            background-size: 24px 24px;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            color: #f3f4f6;
+            transition: background-color 0.3s ease;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b0f19;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4b5563;
+        }
+        
+        .glass-card {
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .thumb-item .delete-btn {
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .thumb-item:hover .delete-btn {
+            opacity: 1;
+        }
+
+        /* Viewport adjustments when in Clean Mode */
+        body.clean-mode {
+            padding: 0 !important;
+            margin: 0 !important;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        body.clean-mode #main-header,
+        body.clean-mode #left-panel,
+        body.clean-mode #canvas-footer-bar,
+        body.clean-mode #slideshow-top-bar {
+            display: none !important;
+        }
+
+        body.clean-mode #canvas-section {
+            grid-column: span 12 / span 12 !important;
+            width: 100vw;
+            height: 100vh;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        body.clean-mode .canvas-wrapper-card {
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            padding: 0 !important;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Transparent Background Theme Override */
+        body.bg-transparent-mode {
+            background-color: transparent !important;
+            background-image: none !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between overflow-x-hidden selection:bg-indigo-500 selection:text-white transition-all duration-300">
+
+    <!-- Header Panel -->
+    <header id="main-header" class="w-full glass-card border-b border-gray-800 px-6 py-4 sticky top-0 z-40 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-indigo-600/20 text-indigo-400 rounded-xl border border-indigo-500/30">
+                <i data-lucide="layout-grid" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">
+                    相片文字拼貼生成器
+                </h1>
+                <p class="text-xs text-gray-400">Photo Collage Text Generator</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <!-- Mode Switch Button -->
+            <button id="clean-mode-toggle" class="px-3.5 py-2 text-xs font-medium bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl border border-gray-700 transition flex items-center gap-2 shadow" title="切換完整儀表板與純畫布預覽">
+                <i data-lucide="maximize-2" class="w-4 h-4 text-indigo-400"></i>
+                <span id="clean-toggle-text">精簡純畫布模式</span>
+            </button>
+
+            <!-- Download Button -->
+            <button id="download-btn" class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/20 transition flex items-center gap-2">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                下載高清圖片
+            </button>
+        </div>
+    </header>
+
+    <!-- Floating Mode Toggle (Visible in Clean Embed Mode) -->
+    <button id="clean-floating-toggle" class="hidden fixed top-4 right-4 z-50 px-3.5 py-2 text-xs font-semibold bg-gray-900/90 hover:bg-gray-800 text-indigo-300 hover:text-white rounded-full border border-indigo-500/40 shadow-2xl backdrop-blur-md transition flex items-center gap-2">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+        <span>切換至完整主控台</span>
+    </button>
+
+    <!-- Main Content Grid Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+        <!-- Left Sidebar / Control Panel -->
+        <aside id="left-panel" class="lg:col-span-5 space-y-6 flex flex-col">
+            
+            <!-- Gallery Management Card -->
+            <div class="glass-card rounded-2xl p-5 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-sm font-semibold text-gray-200 flex items-center gap-2">
+                        <i data-lucide="image" class="w-4 h-4 text-indigo-400"></i>
+                        相片藝廊管理
+                    </h2>
+                    <span id="photo-count" class="text-xs text-gray-400 bg-gray-800/80 px-2.5 py-1 rounded-full border border-gray-700">1 張相片</span>
+                </div>
+
+                <!-- Drag & Drop Upload Zone -->
+                <div id="dropzone" class="border-2 border-dashed border-indigo-500/40 hover:border-indigo-400 bg-gray-900/60 hover:bg-indigo-950/20 rounded-xl p-4 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-1.5 group">
+                    <input type="file" id="file-input" multiple accept="image/jpeg, image/png, image/webp" class="hidden">
+                    <div class="p-2.5 bg-indigo-600/10 text-indigo-400 group-hover:scale-110 rounded-full transition">
+                        <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-gray-200">點擊上傳或拖拽照片至此</p>
+                        <p class="text-[10px] text-gray-400 mt-0.5">支援 JPG, PNG, WEBP 多選批次上傳</p>
+                    </div>
+                </div>
+
+                <!-- Active Photo Thumbnails Bar -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between text-xs text-gray-400">
+                        <span>當前圖片列表</span>
+                        <div class="space-x-2">
+                            <button id="reset-sample-btn" class="text-indigo-400 hover:text-indigo-300 text-[11px] hover:underline font-medium">重置範例</button>
+                            <button id="clear-all-photos" class="text-rose-400 hover:text-rose-300 text-[11px] hover:underline font-medium">清空全部</button>
+                        </div>
+                    </div>
+                    <div id="thumbnail-container" class="flex gap-2 overflow-x-auto py-1.5 min-h-[60px] max-h-[120px] flex-wrap items-center">
+                        <!-- Dynamic Thumbnails inserted here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom Layout & Carousel Controls Card -->
+            <div class="glass-card rounded-2xl p-5 space-y-4">
+                <h2 class="text-sm font-semibold text-gray-200 flex items-center gap-2">
+                    <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i>
+                    排版與輪播設定
+                </h2>
+
+                <div class="grid grid-cols-2 gap-4 text-xs">
+                    <!-- Text Word List -->
+                    <div class="col-span-2 space-y-1.5">
+                        <label class="text-gray-400 flex justify-between">
+                            <span>輪播文字清單 (逗號或換行分隔)</span>
+                        </label>
+                        <textarea id="text-words-input" rows="2" class="w-full bg-gray-900/90 border border-gray-700 focus:border-indigo-500 rounded-xl p-2.5 text-xs text-gray-100 outline-none transition" placeholder="輸入多個文字，如: 2026, LOVE, HOPE">2026, LOVE, HOPE, ART</textarea>
+                    </div>
+
+                    <!-- Aspect Ratio Setting -->
+                    <div class="space-y-1">
+                        <label class="text-gray-400">畫布長寬比例</label>
+                        <select id="aspect-ratio" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-gray-200 focus:outline-none focus:border-indigo-500">
+                            <option value="16:9" selected>16:9 (橫式標準)</option>
+                            <option value="4:3">4:3 (經典螢幕)</option>
+                            <option value="1:1">1:1 (正方形)</option>
+                            <option value="21:9">21:9 (超寬螢幕)</option>
+                            <option value="9:16">9:16 (直式手機)</option>
+                        </select>
+                    </div>
+
+                    <!-- Slide Speed -->
+                    <div class="space-y-1">
+                        <label class="text-gray-400 flex justify-between">
+                            <span>輪播間隔</span>
+                            <span id="interval-val" class="text-indigo-400 font-mono">3 秒</span>
+                        </label>
+                        <select id="slideshow-interval" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-gray-200 focus:outline-none">
+                            <option value="1000">1 秒</option>
+                            <option value="2000">2 秒</option>
+                            <option value="3000" selected>3 秒</option>
+                            <option value="5000">5 秒</option>
+                        </select>
+                    </div>
+
+                    <!-- Cell Size -->
+                    <div class="space-y-1">
+                        <label class="text-gray-400 flex justify-between">
+                            <span>碎片大小</span>
+                            <span id="cell-size-val" class="text-indigo-400 font-mono">14px</span>
+                        </label>
+                        <input type="range" id="cell-size" min="8" max="28" value="14" class="w-full accent-indigo-500">
+                    </div>
+
+                    <!-- Cell Gap -->
+                    <div class="space-y-1">
+                        <label class="text-gray-400 flex justify-between">
+                            <span>碎片間距</span>
+                            <span id="cell-gap-val" class="text-indigo-400 font-mono">2px</span>
+                        </label>
+                        <input type="range" id="cell-gap" min="0" max="6" value="2" class="w-full accent-indigo-500">
+                    </div>
+
+                    <!-- Font Scale Ratio -->
+                    <div class="space-y-1 col-span-2">
+                        <label class="text-gray-400 flex justify-between">
+                            <span>文字大小比例</span>
+                            <span id="font-scale-val" class="text-indigo-400 font-mono">80%</span>
+                        </label>
+                        <input type="range" id="font-scale" min="40" max="120" value="80" class="w-full accent-indigo-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transition Effects & Background Styles Card -->
+            <div class="glass-card rounded-2xl p-5 space-y-4">
+                <h2 class="text-sm font-semibold text-gray-200 flex items-center gap-2">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-indigo-400"></i>
+                    動態過渡與背景樣式
+                </h2>
+
+                <div class="grid grid-cols-2 gap-4 text-xs">
+                    <!-- Transition Effect Select -->
+                    <div class="space-y-1">
+                        <label class="text-gray-400">動態過渡效果</label>
+                        <select id="transition-effect" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-gray-200 focus:outline-none">
+                            <option value="morph" selected>粒子漸變飛入 (Morph)</option>
+                            <option value="fade">淡入淡出 (Fade)</option>
+                            <option value="zoom">彈跳縮放 (Pop Zoom)</option>
+                            <option value="instant">直接切換 (Instant)</option>
+                        </select>
+                    </div>
+
+                    <!-- Background Theme Select -->
+                    <div class="space-y-1">
+                        <label class="text-gray-400">背景樣式風格</label>
+                        <select id="bg-style" class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-gray-200 focus:outline-none">
+                            <option value="dark" selected>極深星空黑</option>
+                            <option value="navy">深藍科技風</option>
+                            <option value="gradient">漸層暗夜</option>
+                            <option value="light">純白簡約</option>
+                            <option value="transparent">透明背景 (適合內嵌)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right Canvas Display Panel -->
+        <section id="canvas-section" class="lg:col-span-7 flex flex-col space-y-4 w-full">
+            <div class="canvas-wrapper-card glass-card rounded-2xl p-4 md:p-5 flex-1 flex flex-col justify-between relative overflow-hidden min-h-[480px]">
+                
+                <!-- Slideshow Controls Top Bar -->
+                <div id="slideshow-top-bar" class="flex items-center justify-between mb-3 px-1 z-10">
+                    <div class="flex items-center space-x-2">
+                        <button id="btn-prev" class="p-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition" title="上一個文字">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <button id="btn-play-pause" class="p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition" title="播放 / 暫停">
+                            <i data-lucide="pause" id="play-pause-icon" class="w-4 h-4"></i>
+                        </button>
+                        <button id="btn-next" class="p-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition" title="下一個文字">
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                        <span id="current-word-display" class="text-xs font-bold text-indigo-400 tracking-wider ml-2">2026</span>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="w-1/3 bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                        <div id="slideshow-progress" class="bg-indigo-500 h-full w-0 transition-all duration-100 ease-linear"></div>
+                    </div>
+                </div>
+
+                <!-- Main Canvas Preview Box -->
+                <div id="canvas-container-box" class="relative flex-1 w-full flex items-center justify-center bg-gray-950/70 rounded-xl overflow-hidden border border-gray-800/80 min-h-[380px]">
+                    <canvas id="collage-canvas" class="max-w-full max-h-full cursor-crosshair object-contain"></canvas>
+                    
+                    <!-- Hover Inspector / Lightbox Card -->
+                    <div id="inspector-card" class="absolute bottom-4 left-4 pointer-events-none opacity-0 transition-opacity duration-200 glass-card p-2.5 rounded-xl border border-indigo-500/30 shadow-2xl flex items-center space-x-3 z-20">
+                        <img id="inspector-img" src="" class="w-12 h-12 object-cover rounded-lg border border-gray-700">
+                        <div class="text-xs">
+                            <p class="font-semibold text-indigo-300">相片碎片檢視器</p>
+                            <p id="inspector-coords" class="text-[10px] text-gray-400">X: 0, Y: 0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer Status Bar -->
+                <div id="canvas-footer-bar" class="mt-3 flex items-center justify-between text-[11px] text-gray-400 px-1">
+                    <span id="canvas-status">碎片總數：0 個 | 輪播模式：啟用</span>
+                    <span class="flex items-center gap-1 text-gray-400">
+                        <i data-lucide="mouse-pointer-2" class="w-3 h-3 text-indigo-400"></i>
+                        懸停可預覽該位置照片
+                    </span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- App Logic Script -->
+    <script>
+        // Sample Preset Image
+        const SAMPLE_IMAGE_URL = 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=400&q=80';
+
+        // Application State
+        const state = {
+            images: [], // { id, img, src }
+            words: ['2026', 'LOVE', 'HOPE', 'ART'],
+            wordIndex: 0,
+            isPlaying: true,
+            slideshowTimer: null,
+            progressInterval: null,
+            progressPercent: 0,
+            intervalMs: 3000,
+            cellSize: 14,
+            cellGap: 2,
+            fontScale: 80,
+            aspectRatio: '16:9',
+            transitionEffect: 'morph',
+            bgStyle: 'dark',
+            particles: [],
+            fadeOpacity: 1,
+            zoomScale: 1,
+            hoveredTile: null,
+            isCleanMode: false
+        };
+
+        // DOM Elements
+        const canvas = document.getElementById('collage-canvas');
+        const ctx = canvas.getContext('2d');
+        const fileInput = document.getElementById('file-input');
+        const dropzone = document.getElementById('dropzone');
+        const thumbContainer = document.getElementById('thumbnail-container');
+        const photoCountLabel = document.getElementById('photo-count');
+        const textWordsInput = document.getElementById('text-words-input');
+        const slideshowIntervalSelect = document.getElementById('slideshow-interval');
+        const btnPlayPause = document.getElementById('btn-play-pause');
+        const playPauseIcon = document.getElementById('play-pause-icon');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+        const currentWordDisplay = document.getElementById('current-word-display');
+        const progressBar = document.getElementById('slideshow-progress');
+        const inspectorCard = document.getElementById('inspector-card');
+        const inspectorImg = document.getElementById('inspector-img');
+        const inspectorCoords = document.getElementById('inspector-coords');
+        const cleanModeToggle = document.getElementById('clean-mode-toggle');
+        const cleanFloatingToggle = document.getElementById('clean-floating-toggle');
+
+        // Initializer
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            setupEventListeners();
+            checkUrlMode();
+            loadSampleImage();
+            resizeCanvas();
+            startSlideshow();
+        });
+
+        // Mode Switching Logic
+        function checkUrlMode() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const isClean = urlParams.get('mode') === 'clean' || urlParams.has('embed');
+            setAppMode(isClean ? 'clean' : 'full');
+        }
+
+        function setAppMode(mode) {
+            state.isCleanMode = (mode === 'clean');
+            const cleanToggleText = document.getElementById('clean-toggle-text');
+
+            if (state.isCleanMode) {
+                document.body.classList.add('clean-mode');
+                cleanFloatingToggle.classList.remove('hidden');
+                if (cleanToggleText) cleanToggleText.innerText = '完整控制主控台';
+            } else {
+                document.body.classList.remove('clean-mode');
+                cleanFloatingToggle.classList.add('hidden');
+                if (cleanToggleText) cleanToggleText.innerText = '精簡純畫布模式';
+            }
+
+            // Sync URL query state safely (catch iFrame / blob origin restrictions)
+            try {
+                const url = new URL(window.location.href);
+                if (state.isCleanMode) {
+                    url.searchParams.set('mode', 'clean');
+                } else {
+                    url.searchParams.delete('mode');
+                    url.searchParams.delete('embed');
+                }
+                window.history.pushState({}, '', url.toString());
+            } catch (e) {
+                // Ignore history restriction in sandboxed iframe
+            }
+
+            setTimeout(resizeCanvas, 60);
+        }
+
+        // Event Listener Setup
+        function setupEventListeners() {
+            window.addEventListener('resize', resizeCanvas);
+
+            // Mode Toggles
+            cleanModeToggle.addEventListener('click', () => {
+                setAppMode(state.isCleanMode ? 'full' : 'clean');
+            });
+            cleanFloatingToggle.addEventListener('click', () => {
+                setAppMode('full');
+            });
+
+            // Sample Reset & Clear All
+            document.getElementById('reset-sample-btn').addEventListener('click', loadSampleImage);
+            document.getElementById('clear-all-photos').addEventListener('click', () => {
+                state.images = [];
+                renderThumbnails();
+                generateParticleLayout();
+            });
+
+            // Dropzone & File Input
+            dropzone.addEventListener('click', () => fileInput.click());
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('border-indigo-400', 'bg-indigo-950/40');
+            });
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.classList.remove('border-indigo-400', 'bg-indigo-950/40');
+            });
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('border-indigo-400', 'bg-indigo-950/40');
+                if (e.dataTransfer.files.length > 0) {
+                    handleFiles(e.dataTransfer.files);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFiles(e.target.files);
+                }
+            });
+
+            // Word List Input
+            textWordsInput.addEventListener('input', (e) => {
+                const val = e.target.value.split(/[\n,]/).map(w => w.trim()).filter(w => w.length > 0);
+                if (val.length > 0) {
+                    state.words = val;
+                    if (state.wordIndex >= state.words.length) state.wordIndex = 0;
+                    updateWordDisplay();
+                    generateParticleLayout();
+                }
+            });
+
+            // Aspect Ratio Selector
+            document.getElementById('aspect-ratio').addEventListener('change', (e) => {
+                state.aspectRatio = e.target.value;
+                resizeCanvas();
+            });
+
+            // Transition Effect & Background Style
+            document.getElementById('transition-effect').addEventListener('change', (e) => {
+                state.transitionEffect = e.target.value;
+            });
+
+            document.getElementById('bg-style').addEventListener('change', (e) => {
+                state.bgStyle = e.target.value;
+                applyBackgroundStyle();
+            });
+
+            // Slider Controls
+            document.getElementById('cell-size').addEventListener('input', (e) => {
+                state.cellSize = parseInt(e.target.value);
+                document.getElementById('cell-size-val').innerText = `${state.cellSize}px`;
+                generateParticleLayout();
+            });
+
+            document.getElementById('cell-gap').addEventListener('input', (e) => {
+                state.cellGap = parseInt(e.target.value);
+                document.getElementById('cell-gap-val').innerText = `${state.cellGap}px`;
+                generateParticleLayout();
+            });
+
+            document.getElementById('font-scale').addEventListener('input', (e) => {
+                state.fontScale = parseInt(e.target.value);
+                document.getElementById('font-scale-val').innerText = `${state.fontScale}%`;
+                generateParticleLayout();
+            });
+
+            slideshowIntervalSelect.addEventListener('change', (e) => {
+                state.intervalMs = parseInt(e.target.value);
+                document.getElementById('interval-val').innerText = `${state.intervalMs / 1000} 秒`;
+                restartSlideshowTimer();
+            });
+
+            // Playback Controls
+            btnPlayPause.addEventListener('click', togglePlayPause);
+            btnPrev.addEventListener('click', () => changeWord(-1));
+            btnNext.addEventListener('click', () => changeWord(1));
+
+            // Export
+            document.getElementById('download-btn').addEventListener('click', downloadCanvasImage);
+
+            // Canvas Hover Inspector
+            canvas.addEventListener('mousemove', handleCanvasHover);
+            canvas.addEventListener('mouseleave', () => {
+                inspectorCard.classList.add('opacity-0');
+                state.hoveredTile = null;
+            });
+        }
+
+        // Apply Background Style
+        function applyBackgroundStyle() {
+            document.body.classList.remove('bg-transparent-mode');
+            
+            switch (state.bgStyle) {
+                case 'navy':
+                    document.documentElement.style.setProperty('--bg-theme', '#0a1128');
+                    document.documentElement.style.setProperty('--bg-pattern', 'radial-gradient(rgba(59, 130, 246, 0.15) 1px, transparent 1px)');
+                    break;
+                case 'gradient':
+                    document.documentElement.style.setProperty('--bg-theme', '#110c26');
+                    document.documentElement.style.setProperty('--bg-pattern', 'radial-gradient(rgba(168, 85, 247, 0.15) 1px, transparent 1px)');
+                    break;
+                case 'light':
+                    document.documentElement.style.setProperty('--bg-theme', '#f8fafc');
+                    document.documentElement.style.setProperty('--bg-pattern', 'radial-gradient(rgba(0, 0, 0, 0.08) 1px, transparent 1px)');
+                    break;
+                case 'transparent':
+                    document.body.classList.add('bg-transparent-mode');
+                    break;
+                case 'dark':
+                default:
+                    document.documentElement.style.setProperty('--bg-theme', '#0b0f19');
+                    document.documentElement.style.setProperty('--bg-pattern', 'radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px)');
+                    break;
+            }
+        }
+
+        // Load 1 Sample Image
+        function loadSampleImage() {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.src = SAMPLE_IMAGE_URL;
+            img.onload = () => {
+                state.images = [{
+                    id: Date.now(),
+                    img: img,
+                    src: SAMPLE_IMAGE_URL
+                }];
+                renderThumbnails();
+                generateParticleLayout();
+            };
+        }
+
+        // Batch File Handling
+        function handleFiles(files) {
+            const valid = Array.from(files).filter(f => f.type.startsWith('image/'));
+            let loaded = 0;
+
+            valid.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        state.images.push({
+                            id: Date.now() + Math.random(),
+                            img: img,
+                            src: e.target.result
+                        });
+                        loaded++;
+                        if (loaded === valid.length) {
+                            renderThumbnails();
+                            generateParticleLayout();
+                        }
+                    };
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Render Gallery Thumbnails with Delete (x) Button
+        function renderThumbnails() {
+            thumbContainer.innerHTML = '';
+            photoCountLabel.innerText = `${state.images.length} 張相片`;
+
+            state.images.forEach((item) => {
+                const wrap = document.createElement('div');
+                wrap.className = 'relative thumb-item w-11 h-11 flex-shrink-0 rounded-lg overflow-hidden border border-gray-700 bg-gray-900 group shadow';
+
+                const imgEl = document.createElement('img');
+                imgEl.src = item.src;
+                imgEl.className = 'w-full h-full object-cover';
+
+                // Delete Button (x)
+                const delBtn = document.createElement('button');
+                delBtn.className = 'delete-btn absolute top-0.5 right-0.5 bg-rose-600 hover:bg-rose-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold shadow-md';
+                delBtn.innerText = '×';
+                delBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    removeImage(item.id);
+                };
+
+                wrap.appendChild(imgEl);
+                wrap.appendChild(delBtn);
+                thumbContainer.appendChild(wrap);
+            });
+        }
+
+        // Remove Single Image
+        function removeImage(id) {
+            state.images = state.images.filter(item => item.id !== id);
+            renderThumbnails();
+            generateParticleLayout();
+        }
+
+        // Resize Canvas based on Selected Aspect Ratio
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container-box');
+            if (!container) return;
+
+            let targetWidth = container.clientWidth || 600;
+            let ratioValue = 16 / 9;
+
+            switch (state.aspectRatio) {
+                case '4:3': ratioValue = 4 / 3; break;
+                case '1:1': ratioValue = 1 / 1; break;
+                case '21:9': ratioValue = 21 / 9; break;
+                case '9:16': ratioValue = 9 / 16; break;
+                case '16:9':
+                default: ratioValue = 16 / 9; break;
+            }
+
+            canvas.width = targetWidth;
+            canvas.height = targetWidth / ratioValue;
+
+            // Constrain if height exceeds container
+            const maxHeight = container.clientHeight || 500;
+            if (canvas.height > maxHeight && maxHeight > 200) {
+                canvas.height = maxHeight;
+                canvas.width = maxHeight * ratioValue;
+            }
+
+            generateParticleLayout();
+        }
+
+        // Generate Text Tile Grid
+        function generateParticleLayout() {
+            if (state.images.length === 0) {
+                state.particles = [];
+                return;
+            }
+
+            const currentWord = state.words[state.wordIndex] || '2026';
+            const offscreen = document.createElement('canvas');
+            const offCtx = offscreen.getContext('2d');
+            offscreen.width = canvas.width;
+            offscreen.height = canvas.height;
+
+            // Render Offscreen Text
+            offCtx.fillStyle = '#ffffff';
+            const fontSize = Math.min(canvas.width / (currentWord.length || 1) * 1.2, canvas.height * 0.7) * (state.fontScale / 100);
+            offCtx.font = `900 ${fontSize}px system-ui, sans-serif`;
+            offCtx.textAlign = 'center';
+            offCtx.textBaseline = 'middle';
+            offCtx.fillText(currentWord, canvas.width / 2, canvas.height / 2);
+
+            const imgData = offCtx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const targetPositions = [];
+            const step = state.cellSize + state.cellGap;
+
+            for (let y = 0; y < canvas.height; y += step) {
+                for (let x = 0; x < canvas.width; x += step) {
+                    const idx = (y * canvas.width + x) * 4;
+                    if (imgData[idx + 3] > 128) {
+                        targetPositions.push({ x, y });
+                    }
+                }
+            }
+
+            // Transition Preparation
+            if (state.transitionEffect === 'fade') {
+                state.fadeOpacity = 0;
+            } else if (state.transitionEffect === 'zoom') {
+                state.zoomScale = 0.2;
+            }
+
+            // Sync Particles for Animation
+            const newParticles = [];
+            targetPositions.forEach((pos, i) => {
+                const imgItem = state.images[i % state.images.length];
+                const existing = state.particles[i];
+
+                if (existing && state.transitionEffect === 'morph') {
+                    existing.targetX = pos.x;
+                    existing.targetY = pos.y;
+                    existing.img = imgItem.img;
+                    newParticles.push(existing);
+                } else {
+                    newParticles.push({
+                        x: state.transitionEffect === 'morph' ? Math.random() * canvas.width : pos.x,
+                        y: state.transitionEffect === 'morph' ? Math.random() * canvas.height : pos.y,
+                        targetX: pos.x,
+                        targetY: pos.y,
+                        img: imgItem.img
+                    });
+                }
+            });
+
+            state.particles = newParticles;
+            document.getElementById('canvas-status').innerText = `碎片總數：${state.particles.length} 個 | 輪播模式：啟用`;
+        }
+
+        // Render Canvas Animation Loop
+        function drawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (state.images.length === 0) {
+                ctx.fillStyle = state.bgStyle === 'light' ? '#334155' : '#9ca3af';
+                ctx.font = '14px system-ui';
+                ctx.textAlign = 'center';
+                ctx.fillText('請上傳照片或點擊「重置範例」產生拼貼', canvas.width / 2, canvas.height / 2);
+                requestAnimationFrame(drawCanvas);
+                return;
+            }
+
+            // Update Animation Variables
+            if (state.transitionEffect === 'fade' && state.fadeOpacity < 1) {
+                state.fadeOpacity = Math.min(1, state.fadeOpacity + 0.08);
+            }
+            if (state.transitionEffect === 'zoom' && state.zoomScale < 1) {
+                state.zoomScale += (1 - state.zoomScale) * 0.2;
+            }
+
+            ctx.save();
+
+            // Zoom Transition Transform
+            if (state.transitionEffect === 'zoom') {
+                ctx.translate(canvas.width / 2, canvas.height / 2);
+                ctx.scale(state.zoomScale, state.zoomScale);
+                ctx.translate(-canvas.width / 2, -canvas.height / 2);
+            }
+
+            // Fade Transition Opacity
+            if (state.transitionEffect === 'fade') {
+                ctx.globalAlpha = state.fadeOpacity;
+            }
+
+            state.particles.forEach(p => {
+                if (state.transitionEffect === 'morph') {
+                    p.x += (p.targetX - p.x) * 0.18;
+                    p.y += (p.targetY - p.y) * 0.18;
+                } else {
+                    p.x = p.targetX;
+                    p.y = p.targetY;
+                }
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.roundRect(p.x, p.y, state.cellSize, state.cellSize, 3);
+                ctx.clip();
+
+                try {
+                    ctx.drawImage(p.img, p.x, p.y, state.cellSize, state.cellSize);
+                } catch (e) {}
+
+                ctx.restore();
+            });
+
+            ctx.restore();
+            requestAnimationFrame(drawCanvas);
+        }
+        requestAnimationFrame(drawCanvas);
+
+        // Hover Magnifier / Inspector
+        function handleCanvasHover(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const found = state.particles.find(p => 
+                mouseX >= p.x && mouseX <= p.x + state.cellSize &&
+                mouseY >= p.y && mouseY <= p.y + state.cellSize
+            );
+
+            if (found && found.img) {
+                state.hoveredTile = found;
+                inspectorImg.src = found.img.src;
+                inspectorCoords.innerText = `X: ${Math.round(found.x)}, Y: ${Math.round(found.y)}`;
+                inspectorCard.classList.remove('opacity-0');
+            } else {
+                inspectorCard.classList.add('opacity-0');
+                state.hoveredTile = null;
+            }
+        }
+
+        // Slideshow Timer Controls
+        function startSlideshow() {
+            state.isPlaying = true;
+            playPauseIcon.setAttribute('data-lucide', 'pause');
+            lucide.createIcons();
+            
+            clearInterval(state.slideshowTimer);
+            clearInterval(state.progressInterval);
+
+            state.progressPercent = 0;
+            const stepTime = 50;
+            const increment = (stepTime / state.intervalMs) * 100;
+
+            state.progressInterval = setInterval(() => {
+                state.progressPercent += increment;
+                if (state.progressPercent > 100) state.progressPercent = 0;
+                progressBar.style.width = `${state.progressPercent}%`;
+            }, stepTime);
+
+            state.slideshowTimer = setInterval(() => {
+                changeWord(1);
+            }, state.intervalMs);
+        }
+
+        function pauseSlideshow() {
+            state.isPlaying = false;
+            playPauseIcon.setAttribute('data-lucide', 'play');
+            lucide.createIcons();
+
+            clearInterval(state.slideshowTimer);
+            clearInterval(state.progressInterval);
+        }
+
+        function togglePlayPause() {
+            if (state.isPlaying) {
+                pauseSlideshow();
+            } else {
+                startSlideshow();
+            }
+        }
+
+        function restartSlideshowTimer() {
+            if (state.isPlaying) {
+                startSlideshow();
+            }
+        }
+
+        function changeWord(direction) {
+            state.wordIndex = (state.wordIndex + direction + state.words.length) % state.words.length;
+            updateWordDisplay();
+            generateParticleLayout();
+            if (state.isPlaying) restartSlideshowTimer();
+        }
+
+        function updateWordDisplay() {
+            currentWordDisplay.innerText = state.words[state.wordIndex] || '';
+        }
+
+        // High Resolution Download & Confetti
+        function downloadCanvasImage() {
+            const link = document.createElement('a');
+            link.download = `photo-collage-${state.words[state.wordIndex]}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            if (typeof confetti === 'function') {
+                confetti({
+                    particleCount: 80,
+                    spread: 60,
+                    origin: { y: 0.8 }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
